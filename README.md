@@ -1,2 +1,0 @@
-# noodle-shop
-แซบนัว
