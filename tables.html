@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จัดการโต๊ะและออเดอร์ - ร้านก๋วยเตี๋ยว</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Prompt', sans-serif; }</style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 md:p-6">
+
+    <header class="max-w-6xl mx-auto flex justify-between items-center mb-6 bg-gray-800 p-4 rounded-2xl border border-gray-700">
+        <div>
+            <h1 class="text-lg md:text-xl font-bold text-red-500">🪑 ระบบจัดการโต๊ะ & เช็คบิล</h1>
+            <p class="text-xs text-gray-400">ภาพรวมสถานะโต๊ะและออเดอร์ทั้งหมดแบบเรียลไทม์</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+            <span class="text-xs text-green-400 font-bold">เชื่อมต่อเรียลไทม์แล้ว</span>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto space-y-6">
+        <!-- โต๊ะทานที่ร้าน -->
+        <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700">
+            <h2 class="text-sm font-bold text-gray-300 mb-4">🍽️ โซนโต๊ะอาหาร (โต๊ะ 01 - โต๊ะ 10)</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4" id="tables-grid">
+                <!-- โหลดด้วย JS -->
+            </div>
+        </div>
+
+        <!-- ออเดอร์กลับบ้าน / เดลิเวอรี -->
+        <div class="bg-gray-800 p-4 rounded-2xl border border-gray-700">
+            <h2 class="text-sm font-bold text-gray-300 mb-4">🛍️ ออเดอร์กลับบ้าน & เดลิเวอรี</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="takeaway-grid">
+                <p class="text-xs text-gray-400 col-span-full text-center py-4">ไม่มีออเดอร์กลับบ้าน/เดลิเวอรีในขณะนี้</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal รายละเอียดโต๊ะ / เช็คบิล -->
+    <div id="table-modal" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-gray-800 w-full max-w-md rounded-2xl p-6 space-y-4 border border-gray-700 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-gray-700 pb-3">
+                <h3 id="modal-table-title" class="font-bold text-base text-white">รายละเอียดโต๊ะ</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white text-xl font-bold">&times;</button>
+            </div>
+            
+            <div id="modal-order-content" class="space-y-3 text-xs">
+                <!-- ข้อมูลออเดอร์ -->
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button id="modal-action-btn" onclick="" class="flex-1 bg-green-600 text-white py-2.5 rounded-xl text-xs font-bold shadow hover:bg-green-700 transition">
+                    ชำระเงิน / ปิดโต๊ะ
+                </button>
+                <button onclick="closeModal()" class="bg-gray-700 text-gray-300 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-gray-600 transition">
+                    ปิดหน้าต่าง
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://bofbcqfavxbydzmfhhdi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvZmJjcWZhdnhieWR6bWZoaGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzgyNDMsImV4cCI6MjEwODY1NDI0M30.NazP38z1ligYp9S0gChRZs9JYNabN6YX4akJe84ai7o';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let activeOrdersMap = {};
+        let specialOrdersList = [];
+        const totalTablesCount = 10;
+
+        async function fetchAllActiveOrders() {
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .select('*')
+                .in('status', ['new', 'cooking', 'ready'])
+                .order('id', { ascending: false });
+
+            if (!error && data) {
+                activeOrdersMap = {};
+                specialOrdersList = [];
+
+                data.forEach(order => {
+                    if (order.table_no.startsWith('โต๊ะ')) {
+                        activeOrdersMap[order.table_no] = order;
+                    } else {
+                        specialOrdersList.push(order);
+                    }
+                });
+
+                renderTablesGrid();
+                renderSpecialOrdersGrid();
+            }
+        }
+
+        function renderTablesGrid() {
+            const grid = document.getElementById('tables-grid');
+            grid.innerHTML = '';
+
+            for (let i = 1; i <= totalTablesCount; i++) {
+                const tableKey = `โต๊ะ ${i < 10 ? '0' + i : i}`;
+                const order = activeOrdersMap[tableKey];
+                const isOccupied = !!order;
+
+                let statusBg = isOccupied ? 'bg-yellow-900/40 border-yellow-600' : 'bg-gray-700/50 border-gray-600';
+                let badgeColor = isOccupied ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-300';
+                let badgeText = isOccupied ? 'มีออเดอร์' : 'ว่าง';
+
+                grid.innerHTML += `
+                    <div onclick="openTableDetail('${tableKey}')" class="${statusBg} border-2 rounded-2xl p-4 flex flex-col justify-between items-center cursor-pointer hover:scale-105 transition shadow-lg h-32">
+                        <div class="w-full flex justify-between items-center">
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeColor}">${badgeText}</span>
+                            ${isOccupied ? `<span class="text-xs text-yellow-400 font-bold">฿${order.total_price}</span>` : ''}
+                        </div>
+                        <div class="text-center my-auto">
+                            <span class="text-lg font-black text-white">${tableKey}</span>
+                        </div>
+                        <div class="w-full text-center text-[10px] text-gray-400">
+                            ${isOccupied ? (order.status === 'ready' ? '🎉 พร้อมเสิร์ฟ' : '⏳ กำลังทำ') : 'พร้อมรับลูกค้า'}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderSpecialOrdersGrid() {
+            const grid = document.getElementById('takeaway-grid');
+            grid.innerHTML = '';
+
+            if (specialOrdersList.length === 0) {
+                grid.innerHTML = '<p class="text-xs text-gray-400 col-span-full text-center py-4">ไม่มีออเดอร์กลับบ้าน/เดลิเวอรีในขณะนี้</p>';
+                return;
+            }
+
+            specialOrdersList.forEach(order => {
+                grid.innerHTML += `
+                    <div onclick="openSpecialOrderModal('${order.id}')" class="bg-gray-700/50 border-2 border-red-500/50 rounded-2xl p-4 flex flex-col justify-between cursor-pointer hover:scale-[1.02] transition shadow-lg space-y-2">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-red-600 text-white">${order.table_no}</span>
+                            <span class="text-xs text-yellow-400 font-bold">฿${order.total_price}</span>
+                        </div>
+                        <div>
+                            <p class="text-xs text-white font-bold">ออเดอร์ #${order.id}</p>
+                            <p class="text-[11px] text-gray-400">สถานะ: ${order.status}</p>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function openTableDetail(tableKey) {
+            const order = activeOrdersMap[tableKey];
+            const modalTitle = document.getElementById('modal-table-title');
+            const content = document.getElementById('modal-order-content');
+            const actionBtn = document.getElementById('modal-action-btn');
+
+            modalTitle.innerText = `รายละเอียด ${tableKey}`;
+
+            if (!order) {
+                content.innerHTML = '<p class="text-center text-gray-400 py-6">โต๊ะนี้ยังไม่มีออเดอร์</p>';
+                actionBtn.style.display = 'none';
+                document.getElementById('table-modal').classList.remove('hidden');
+                return;
+            }
+
+            actionBtn.style.display = 'block';
+            actionBtn.setAttribute('onclick', `checkoutOrder(${order.id})`);
+
+            let itemsHtml = '<div class="space-y-2 bg-gray-900/50 p-3 rounded-xl border border-gray-700">';
+            let itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            if (Array.isArray(itemsList)) {
+                itemsList.forEach(i => {
+                    const itemName = i.name || i.menu_name || 'เมนูอาหาร';
+                    let details = [i.size];
+                    if (i.noodle) details.push(i.noodle);
+                    if (i.soup) details.push(i.soup);
+                    let detailStr = details.filter(Boolean).join(' / ');
+                    
+                    itemsHtml += `
+                        <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                            <div>
+                                <p class="font-bold text-white">${itemName} x ${i.quantity || 1}</p>
+                                ${detailStr ? `<p class="text-[10px] text-gray-400">${detailStr}</p>` : ''}
+                                ${i.note ? `<p class="text-[10px] text-red-400">💬 โน้ต: ${i.note}</p>` : ''}
+                            </div>
+                            <span class="font-bold text-red-400">฿${i.price}</span>
+                        </div>
+                    `;
+                });
+            }
+            itemsHtml += `</div>`;
+            itemsHtml += `<div class="flex justify-between items-center pt-2 font-bold text-sm text-white"><span>ยอดรวมทั้งสิ้น:</span><span class="text-red-500 text-base">฿${order.total_price}</span></div>`;
+
+            content.innerHTML = itemsHtml;
+            document.getElementById('table-modal').classList.remove('hidden');
+        }
+
+        function openSpecialOrderModal(orderId) {
+            const order = specialOrdersList.find(o => o.id == orderId);
+            if (!order) return;
+
+            const modalTitle = document.getElementById('modal-table-title');
+            const content = document.getElementById('modal-order-content');
+            const actionBtn = document.getElementById('modal-action-btn');
+
+            modalTitle.innerText = `รายละเอียดออเดอร์ #${order.id} (${order.table_no})`;
+            actionBtn.style.display = 'block';
+            actionBtn.setAttribute('onclick', `checkoutOrder(${order.id})`);
+
+            let itemsHtml = '<div class="space-y-2 bg-gray-900/50 p-3 rounded-xl border border-gray-700">';
+            let itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+            
+            if (Array.isArray(itemsList)) {
+                itemsList.forEach(i => {
+                    const itemName = i.name || i.menu_name || 'เมนูอาหาร';
+                    let details = [i.size];
+                    if (i.noodle) details.push(i.noodle);
+                    if (i.soup) details.push(i.soup);
+                    let detailStr = details.filter(Boolean).join(' / ');
+                    
+                    itemsHtml += `
+                        <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                            <div>
+                                <p class="font-bold text-white">${itemName} x ${i.quantity || 1}</p>
+                                ${detailStr ? `<p class="text-[10px] text-gray-400">${detailStr}</p>` : ''}
+                                ${i.note ? `<p class="text-[10px] text-red-400">💬 โน้ต: ${i.note}</p>` : ''}
+                            </div>
+                            <span class="font-bold text-red-400">฿${i.price}</span>
+                        </div>
+                    `;
+                });
+            }
+            itemsHtml += `</div>`;
+            itemsHtml += `<div class="flex justify-between items-center pt-2 font-bold text-sm text-white"><span>ยอดรวมทั้งสิ้น:</span><span class="text-red-500 text-base">฿${order.total_price}</span></div>`;
+
+            content.innerHTML = itemsHtml;
+            document.getElementById('table-modal').classList.remove('hidden');
+        }
+
+        async function checkoutOrder(orderId) {
+            if (!confirm('ยืนยันการชำระเงินและปิดออเดอร์นี้?')) return;
+            const { error } = await supabaseClient.from('orders').update({ status: 'completed' }).eq('id', orderId);
+            if (!error) {
+                closeModal();
+                fetchAllActiveOrders();
+            } else {
+                alert('เกิดข้อผิดพลาด: ' + error.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('table-modal').classList.add('hidden');
+        }
+
+        supabaseClient
+            .channel('tables-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                fetchAllActiveOrders();
+            })
+            .subscribe();
+
+        fetchAllActiveOrders();
+    </script>
+</body>
+</html>

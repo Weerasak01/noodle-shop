@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>หน้าจอห้องครัว (KDS)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4">
+
+  <!-- Header -->
+  <header class="max-w-4xl mx-auto mb-6 flex justify-between items-center border-b border-gray-800 pb-4">
+    <div>
+      <h1 class="text-xl font-bold text-red-500">🔥 หน้าจอห้องครัว (KDS)</h1>
+      <p id="shop-title" class="text-xs text-gray-400">ระบบจัดการออร์เดอร์เรียลไทม์ - กำลังโหลดชื่อร้าน...</p>
+    </div>
+    <div id="connection-status" class="text-xs bg-gray-800 text-yellow-400 px-3 py-1 rounded-full font-bold">
+      กำลังเชื่อมต่อ...
+    </div>
+  </header>
+
+  <!-- Orders Container -->
+  <main class="max-w-4xl mx-auto">
+    <div id="kitchen-orders" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="text-gray-500 text-center col-span-2 py-10">กำลังโหลดออร์เดอร์...</div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://bofbcqfavxbydzmfhhdi.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvZmJjcWZhdnhieWR6bWZoaGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzgyNDMsImV4cCI6MjEwODY1NDI0M30.NazP38z1ligYp9S0gChRZs9JYNabN6YX4akJe84ai7o';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function loadShopName() {
+      const { data } = await supabaseClient.from('settings').select('value').eq('key', 'shop_name').single();
+      if (data && data.value) {
+        document.getElementById('shop-title').innerText = `ระบบจัดการออร์เดอร์เรียลไทม์ - ${data.value}`;
+      } else {
+        document.getElementById('shop-title').innerText = `ระบบจัดการออร์เดอร์เรียลไทม์ - ร้านเจ๊ A`;
+      }
+    }
+
+    async function loadKitchenOrders() {
+      const container = document.getElementById('kitchen-orders');
+      
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*')
+        .in('status', ['new', 'cooking'])
+        .order('id', { ascending: true });
+
+      if (error) {
+        container.innerHTML = `<div class="text-red-400 text-center col-span-2">เกิดข้อผิดพลาดในการโหลดออร์เดอร์</div>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-2 bg-gray-800 rounded-2xl p-10 text-center text-gray-400 space-y-2 border border-gray-700">
+            <p class="text-lg font-bold">🎉 ไม่มีออร์เดอร์ค้างในขณะนี้</p>
+            <p class="text-xs">ออร์เดอร์ใหม่จะปรากฏขึ้นอัตโนมัติทันทีที่ลูกค้าสั่ง</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = '';
+
+      data.forEach(order => {
+        let itemsList = [];
+        try {
+          itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        } catch (e) {
+          itemsList = [];
+        }
+
+        let itemsHtml = '';
+        if (Array.isArray(itemsList)) {
+          itemsList.forEach(item => {
+            itemsHtml += `
+              <div class="bg-gray-800 p-3 rounded-xl border border-gray-700 space-y-1">
+                <div class="flex justify-between items-center">
+                  <span class="font-bold text-sm text-white">${item.name || item.menu_name || 'เมนูอาหาร'}</span>
+                  <span class="bg-red-600 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">x${item.quantity || 1}</span>
+                </div>
+                <p class="text-xs text-gray-300">ตัวเลือก: <span class="text-yellow-400 font-medium">${item.noodle || '-'} / ${item.soup || '-'}</span></p>
+                ${item.note ? `<p class="text-xs text-red-400 font-medium">💬 หมายเหตุ: ${item.note}</p>` : ''}
+              </div>
+            `;
+          });
+        }
+
+        // ส่วนแสดงข้อมูลลูกค้า (กรณีเป็น กลับบ้าน หรือ เดลิเวอรี ที่เก็บผ่าน customer_info)
+        let customerInfoHtml = '';
+        if (order.customer_info) {
+          const info = order.customer_info;
+          customerInfoHtml = `
+            <div class="bg-gray-900/60 border border-gray-700 p-3 rounded-xl space-y-1 text-xs">
+              <p class="font-bold text-yellow-300">👤 ข้อมูลผู้สั่ง / จัดส่ง:</p>
+              ${info.name ? `<p><b>ชื่อ:</b> ${info.name}</p>` : ''}
+              ${info.phone ? `<p><b>เบอร์โทร:</b> <a href="tel:${info.phone}" class="text-blue-400 underline">${info.phone}</a></p>` : ''}
+              ${info.address ? `<p><b>ที่อยู่:</b> ${info.address}</p>` : ''}
+              ${info.gps ? `<p class="pt-1"><a href="${info.gps}" target="_blank" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs">🗺️ เปิดแผนที่นำทาง GPS</a></p>` : ''}
+            </div>
+          `;
+        }
+
+        let actionButton = '';
+        if (order.status === 'new') {
+          actionButton = `<button onclick="updateStatus('${order.id}', 'cooking')" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-950 font-bold py-2.5 rounded-xl transition shadow">🟡 กดรับออร์เดอร์ (เริ่มทำ)</button>`;
+        } else if (order.status === 'cooking') {
+          actionButton = `<button onclick="finishOrder('${order.id}')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl transition shadow">🟢 ทำเสร็จแล้ว (รันคิว)</button>`;
+        }
+
+        container.innerHTML += `
+          <div class="bg-gray-800/90 border border-gray-700 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
+            <div class="space-y-3">
+              <div class="flex justify-between items-center border-b border-gray-700 pb-3">
+                <span class="text-lg font-extrabold text-yellow-400">📍 ${order.table_no || 'โต๊ะ 01'}</span>
+                <span class="text-xs px-2.5 py-1 rounded-full font-bold ${order.status === 'new' ? 'bg-yellow-900/60 text-yellow-300 border border-yellow-700' : 'bg-blue-900/60 text-blue-300 border border-blue-700'}">
+                  ${order.status === 'new' ? '⏳ รอรับเรื่อง' : '🔥 กำลังทำอาหาร'}
+                </span>
+              </div>
+
+              <!-- ข้อมูลลูกค้า / เดลิเวอรี (ถ้ามี) -->
+              ${customerInfoHtml}
+
+              <!-- รายการอาหาร -->
+              <div class="space-y-2">
+                ${itemsHtml}
+              </div>
+            </div>
+
+            <div class="pt-2">
+              ${actionButton}
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    async function updateStatus(orderId, newStatus) {
+      const { error } = await supabaseClient
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', orderId);
+
+      if (error) {
+        alert('อัปเดตสถานะไม่สำเร็จ: ' + error.message);
+      } else {
+        loadKitchenOrders();
+      }
+    }
+
+    async function finishOrder(orderId) {
+      const { data: existingOrders, error: fetchError } = await supabaseClient
+        .from('orders')
+        .select('queue_no')
+        .not('queue_no', 'is', null)
+        .order('queue_no', { ascending: false })
+        .limit(1);
+
+      if (fetchError) {
+        alert('เกิดข้อผิดพลาดในการคำนวณคิว: ' + fetchError.message);
+        return;
+      }
+
+      let nextQueue = 1;
+      if (existingOrders && existingOrders.length > 0 && existingOrders[0].queue_no) {
+        nextQueue = existingOrders[0].queue_no + 1;
+      }
+
+      const { error: updateError } = await supabaseClient
+        .from('orders')
+        .update({ 
+          status: 'ready',
+          queue_no: nextQueue 
+        })
+        .eq('id', orderId);
+
+      if (updateError) {
+        alert('อัปเดตคิวไม่สำเร็จ: ' + updateError.message);
+      } else {
+        loadKitchenOrders();
+      }
+    }
+
+    function setupRealtime() {
+      supabaseClient
+        .channel('kitchen-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, payload => {
+          loadKitchenOrders();
+        })
+        .subscribe((status) => {
+          const statusEl = document.getElementById('connection-status');
+          if (status === 'SUBSCRIBED') {
+            statusEl.innerText = '🟢 เชื่อมต่อเรียลไทม์แล้ว';
+            statusEl.className = 'text-xs bg-gray-800 text-green-400 px-3 py-1 rounded-full font-bold';
+          }
+        });
+    }
+
+    loadShopName();
+    loadKitchenOrders();
+    setupRealtime();
+  </script>
+</body>
+</html>

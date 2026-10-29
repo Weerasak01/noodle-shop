@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ติดตามสถานะออเดอร์</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Prompt', sans-serif; }</style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+
+    <header class="max-w-md mx-auto bg-red-600 text-white p-4 rounded-2xl shadow-md text-center mb-4">
+        <h1 class="text-base font-bold">📋 ติดตามสถานะออเดอร์ของคุณ</h1>
+    </header>
+
+    <main class="max-w-md mx-auto space-y-4">
+        <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex gap-2">
+            <input type="text" id="search-table-input" placeholder="ระบุโต๊ะ เช่น โต๊ะ 01" class="flex-1 border rounded-xl px-3 py-2 text-xs font-bold">
+            <button onclick="searchOrderTracking()" class="bg-red-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow">ค้นหา</button>
+        </div>
+
+        <div id="tracking-result-container" class="space-y-4">
+            <p class="text-center text-gray-400 py-8 text-sm">กรุณาระบุโต๊ะเพื่อตรวจสอบสถานะออเดอร์</p>
+        </div>
+    </main>
+
+    <script>
+        const SUPABASE_URL = 'https://bofbcqfavxbydzmfhhdi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvZmJjcWZhdnhieWR6bWZoaGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzgyNDMsImV4cCI6MjEwODY1NDI0M30.NazP38z1ligYp9S0gChRZs9JYNabN6YX4akJe84ai7o';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('table')) {
+            const t = urlParams.get('table');
+            document.getElementById('search-table-input').value = t;
+            searchOrderTracking();
+        }
+
+        async function searchOrderTracking() {
+            const tableVal = document.getElementById('search-table-input').value.trim();
+            const container = document.getElementById('tracking-result-container');
+            
+            if (!tableVal) return alert('กรุณาระบุชื่อโต๊ะ');
+
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .select('*')
+                .eq('table_no', tableVal)
+                .in('status', ['new', 'cooking', 'ready'])
+                .order('id', { ascending: false });
+
+            if (error || !data || data.length === 0) {
+                container.innerHTML = '<div class="bg-white p-6 rounded-2xl text-center shadow-sm"><p class="text-gray-400 text-xs">ไม่พบออเดอร์ที่กำลังดำเนินการของโต๊ะนี้</p></div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            data.forEach(order => {
+                let statusBadge = '🔥 กำลังทำอาหาร';
+                if (order.status === 'new') statusBadge = '⏳ รอรับออเดอร์';
+                if (order.status === 'ready') statusBadge = '✨ อาหารพร้อมเสิร์ฟแล้ว!';
+
+                let itemsHtml = '';
+                let itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                
+                if (Array.isArray(itemsList)) {
+                    itemsList.forEach(i => {
+                        const itemName = i.name || i.menu_name || 'เมนูอาหาร';
+                        let details = [i.size];
+                        if (i.noodle) details.push(i.noodle);
+                        if (i.soup) details.push(i.soup);
+                        let detailStr = details.filter(Boolean).join(' / ');
+
+                        itemsHtml += `
+                            <div class="border-b pb-2">
+                                <p class="font-bold text-gray-800 text-xs">${itemName} x ${i.quantity || 1} ${detailStr ? `(${detailStr})` : ''}</p>
+                                ${i.note ? `<p class="text-[11px] text-red-500">หมายเหตุ: ${i.note}</p>` : ''}
+                                <p class="text-xs text-red-600 font-bold">฿${i.price}</p>
+                            </div>
+                        `;
+                    });
+                }
+
+                container.innerHTML += `
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 space-y-3">
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-bold text-gray-700 text-xs">ออเดอร์ #${order.id} (${order.table_no})</span>
+                            <span class="bg-orange-100 text-orange-800 text-[10px] px-2 py-0.5 rounded-full font-bold">${statusBadge}</span>
+                        </div>
+                        <div class="space-y-2">${itemsHtml}</div>
+                        <div class="flex justify-between items-center pt-2 border-t font-bold text-sm">
+                            <span class="text-gray-600">ยอดรวม:</span>
+                            <span class="text-red-600">฿${order.total_price}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        supabaseClient
+            .channel('tracking-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                const tableVal = document.getElementById('search-table-input').value.trim();
+                if (tableVal) searchOrderTracking();
+            })
+            .subscribe();
+    </script>
+</body>
+</html>

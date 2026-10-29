@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการเมนูอาหาร (Admin)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Prompt', sans-serif; }</style>
+</head>
+<body class="bg-gray-100 p-6">
+    <div class="max-w-2xl mx-auto bg-white p-6 rounded-2xl shadow-lg space-y-6">
+        
+        <h1 class="text-2xl font-bold text-red-600 text-center">🍜 ระบบจัดการร้าน & เมนูอาหาร</h1>
+
+        <!-- ตั้งค่าชื่อร้าน & เปิด-ปิดร้านรวม -->
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+            <h2 class="text-sm font-bold text-gray-700">⚙️ ตั้งค่าร้านค้า</h2>
+            <div class="flex gap-2">
+                <input type="text" id="shop-name-input" class="flex-1 border rounded-xl px-3 py-2 text-sm font-bold" placeholder="ชื่อร้าน">
+                <button onclick="updateShopName()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">
+                    บันทึกชื่อร้าน
+                </button>
+            </div>
+            
+            <div class="flex items-center justify-between pt-2 border-t">
+                <span class="text-sm font-bold text-gray-700">สถานะร้านค้า (เปิด / ปิดรับออเดอร์)</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="shop-status-toggle" onchange="toggleShopStatus()" class="sr-only peer">
+                    <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-green-600"></div>
+                    <span id="shop-status-text" class="ml-3 text-sm font-bold text-gray-600">กำลังโหลด...</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ฟอร์มเพิ่ม/แก้ไขเมนู -->
+        <form id="menu-form" onsubmit="saveMenu(event)" class="space-y-4 border-t pt-4">
+            <input type="hidden" id="edit-menu-id">
+            <h2 id="form-title" class="text-lg font-bold text-gray-800">➕ เพิ่มเมนูใหม่</h2>
+            
+            <div>
+                <label class="block text-sm font-medium text-gray-700">ชื่อเมนู</label>
+                <input type="text" id="name" required class="w-full mt-1 border rounded-lg p-2">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">หมวดหมู่</label>
+                <select id="category" class="w-full mt-1 border rounded-lg p-2">
+                    <option value="ก๋วยเตี๋ยว">ก๋วยเตี๋ยว</option>
+                    <option value="อาหาร">อาหาร</option>
+                    <option value="เครื่องดื่ม">เครื่องดื่ม</option>
+                </select>
+            </div>
+
+            <!-- ช่องราคา ธรรมดา / พิเศษ -->
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">ราคา ธรรมดา (บาท)</label>
+                    <input type="number" id="price_normal" required class="w-full mt-1 border rounded-lg p-2" placeholder="เช่น 50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">ราคา พิเศษ (บาท)</label>
+                    <input type="number" id="price_special" class="w-full mt-1 border rounded-lg p-2" placeholder="เช่น 60">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">รูปภาพเมนู</label>
+                <input type="file" id="imageFile" accept="image/*" class="w-full mt-1 border rounded-lg p-2">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">ตัวเลือกเส้น (คั่นด้วย ,)</label>
+                <input type="text" id="noodles" class="w-full mt-1 border rounded-lg p-2" placeholder="เส้นเล็ก, เส้นใหญ่, บะหมี่">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700">ตัวเลือกน้ำซุป/แบบ (คั่นด้วย ,)</label>
+                <input type="text" id="soups" class="w-full mt-1 border rounded-lg p-2" placeholder="น้ำใส, ต้มยำ, แห้ง">
+            </div>
+            
+            <div class="flex gap-2">
+                <button type="submit" id="submit-btn" class="flex-1 bg-red-600 text-white py-2 rounded-lg font-bold hover:bg-red-700 transition">
+                    บันทึกเมนู
+                </button>
+                <button type="button" id="cancel-btn" onclick="resetForm()" class="hidden bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-400 transition">
+                    ยกเลิก
+                </button>
+            </div>
+        </form>
+
+        <!-- รายการเมนูทั้งหมด -->
+        <div class="border-t pt-4">
+            <h2 class="text-lg font-bold text-gray-800 mb-2">📋 รายการเมนูทั้งหมด</h2>
+            <div id="menu-list" class="space-y-2"></div>
+        </div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://bofbcqfavxbydzmfhhdi.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvZmJjcWZhdnhieWR6bWZoaGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzgyNDMsImV4cCI6MjEwODY1NDI0M30.NazP38z1ligYp9S0gChRZs9JYNabN6YX4akJe84ai7o';
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let menusData = [];
+
+        async function loadShopSettings() {
+            const { data: nameData } = await supabaseClient.from('settings').select('value').eq('key', 'shop_name').maybeSingle();
+            if (nameData) document.getElementById('shop-name-input').value = nameData.value;
+
+            const { data: statusData } = await supabaseClient.from('settings').select('value').eq('key', 'shop_status').maybeSingle();
+            const toggle = document.getElementById('shop-status-toggle');
+            const statusText = document.getElementById('shop-status-text');
+            
+            if (statusData) {
+                const isOpen = statusData.value === 'open' || statusData.value === true || statusData.value === 'true';
+                toggle.checked = isOpen;
+                statusText.innerText = isOpen ? 'เปิดร้านอยู่' : 'ปิดร้านแล้ว';
+                statusText.className = isOpen ? 'ml-3 text-sm font-bold text-green-600' : 'ml-3 text-sm font-bold text-red-500';
+            } else {
+                toggle.checked = true;
+                statusText.innerText = 'เปิดร้านอยู่';
+                statusText.className = 'ml-3 text-sm font-bold text-green-600';
+            }
+        }
+
+        async function updateShopName() {
+            const newName = document.getElementById('shop-name-input').value.trim();
+            if (!newName) return alert('กรุณากรอกชื่อร้าน');
+            const { error } = await supabaseClient.from('settings').upsert({ key: 'shop_name', value: newName }, { onConflict: 'key' });
+            if (error) alert('บันทึกไม่สำเร็จ: ' + error.message);
+            else alert('อัปเดตชื่อร้านเรียบร้อย!');
+        }
+
+        async function toggleShopStatus() {
+            const toggle = document.getElementById('shop-status-toggle');
+            const statusText = document.getElementById('shop-status-text');
+            const isOpen = toggle.checked;
+            
+            statusText.innerText = isOpen ? 'เปิดร้านอยู่' : 'ปิดร้านแล้ว';
+            statusText.className = isOpen ? 'ml-3 text-sm font-bold text-green-600' : 'ml-3 text-sm font-bold text-red-500';
+
+            await supabaseClient.from('settings').upsert({ key: 'shop_status', value: isOpen ? 'open' : 'closed' }, { onConflict: 'key' });
+        }
+
+        async function fetchMenus() {
+            const { data, error } = await supabaseClient.from('menus').select('*').order('id', { ascending: false });
+            const listEl = document.getElementById('menu-list');
+            if (error) {
+                listEl.innerHTML = '<p class="text-red-500">โหลดเมนูไม่สำเร็จ</p>';
+                return;
+            }
+            menusData = data;
+            listEl.innerHTML = '';
+            
+            data.forEach(m => {
+                const normal = m.price || 0;
+                const special = 0;
+                const isAvailable = m.is_available !== false && m.is_available !== 'false';
+
+                listEl.innerHTML += `
+                    <div class="flex justify-between items-center border p-3 rounded-lg bg-gray-50 ${!isAvailable ? 'opacity-60 bg-gray-200' : ''}">
+                        <div class="flex items-center gap-3">
+                            <img src="${m.image_url || 'https://via.placeholder.com/150'}" class="w-12 h-12 object-cover rounded-md">
+                            <div>
+                                <p class="font-bold">${m.name} <span class="text-xs text-gray-500 font-normal">(${m.category || 'ก๋วยเตี๋ยว'})</span></p>
+                                <p class="text-sm text-red-600 font-bold">ราคา: ฿${normal}</p>
+                                <p class="text-xs font-bold ${isAvailable ? 'text-green-600' : 'text-red-500'}">${isAvailable ? '🟢 เปิดขายอยู่' : '🔴 ปิดขาย (หมด)'}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="toggleMenuStatus('${m.id}', ${isAvailable})" class="${isAvailable ? 'bg-orange-100 text-orange-700 hover:bg-orange-200' : 'bg-green-100 text-green-700 hover:bg-green-200'} px-2.5 py-1 rounded-lg text-xs font-bold transition">
+                                ${isAvailable ? 'ปิดขาย' : 'เปิดขาย'}
+                            </button>
+                            <button onclick="editMenu('${m.id}')" class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-lg text-xs font-bold hover:bg-yellow-200">แก้ไข</button>
+                            <button onclick="deleteMenu('${m.id}')" class="bg-red-100 text-red-600 px-3 py-1 rounded-lg text-xs font-bold hover:bg-red-200">ลบ</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function toggleMenuStatus(id, currentStatus) {
+            const newStatus = !currentStatus;
+            const { error } = await supabaseClient.from('menus').update({ is_available: newStatus }).eq('id', id);
+            if (error) {
+                alert('เปลี่ยนสถานะไม่สำเร็จ: ' + error.message);
+            } else {
+                fetchMenus();
+            }
+        }
+
+        async function saveMenu(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit-menu-id').value;
+            const name = document.getElementById('name').value;
+            const category = document.getElementById('category').value;
+            const price = parseFloat(document.getElementById('price_normal').value);
+            const noodles = document.getElementById('noodles').value;
+            const soups = document.getElementById('soups').value;
+            let imageUrl = '';
+
+            const fileInput = document.getElementById('imageFile').files[0];
+            if (fileInput) {
+                const fileName = `menu_${Date.now()}_${fileInput.name}`;
+                const { data, error } = await supabaseClient.storage.from('menu-images').upload(fileName, fileInput);
+                if (!error) {
+                    const { data: publicUrlData } = supabaseClient.storage.from('menu-images').getPublicUrl(fileName);
+                    imageUrl = publicUrlData.publicUrl;
+                }
+            }
+
+            let payload = { name, category, price, noodles, soups };
+            if (imageUrl) payload.image_url = imageUrl;
+
+            if (editId) {
+                const { error } = await supabaseClient.from('menus').update(payload).eq('id', editId);
+                if (error) {
+                    alert('แก้ไขไม่สำเร็จ: ' + error.message);
+                    return;
+                }
+                alert('แก้ไขเมนูสำเร็จ!');
+                resetForm();
+                fetchMenus();
+            } else {
+                payload.is_available = true;
+                const { error } = await supabaseClient.from('menus').insert([payload]);
+                if (error) {
+                    alert('เพิ่มเมนูไม่สำเร็จ: ' + error.message);
+                    return;
+                }
+                alert('เพิ่มเมนูสำเร็จ!');
+                document.getElementById('menu-form').reset();
+                fetchMenus();
+            }
+        }
+
+        function editMenu(id) {
+            const m = menusData.find(item => item.id == id);
+            if (!m) return;
+
+            document.getElementById('edit-menu-id').value = m.id;
+            document.getElementById('name').value = m.name;
+            document.getElementById('category').value = m.category || 'ก๋วยเตี๋ยว';
+            document.getElementById('price_normal').value = m.price || 0;
+            document.getElementById('price_special').value = 0;
+            document.getElementById('noodles').value = m.noodles || '';
+            document.getElementById('soups').value = m.soups || '';
+
+            document.getElementById('form-title').innerText = '✏️ แก้ไขเมนู';
+            document.getElementById('submit-btn').innerText = 'บันทึกการแก้ไข';
+            document.getElementById('cancel-btn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function resetForm() {
+            document.getElementById('menu-form').reset();
+            document.getElementById('edit-menu-id').value = '';
+            document.getElementById('form-title').innerText = '➕ เพิ่มเมนูใหม่';
+            document.getElementById('submit-btn').innerText = 'บันทึกเมนู';
+            document.getElementById('cancel-btn').classList.add('hidden');
+        }
+
+        async function deleteMenu(id) {
+            if (!confirm('ยืนยันการลบเมนูนี้?')) return;
+            const { error } = await supabaseClient.from('menus').delete().eq('id', id);
+            if (!error) fetchMenus();
+        }
+
+        loadShopSettings();
+        fetchMenus();
+    </script>
+</body>
+</html>

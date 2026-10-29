@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบแคชเชียร์ & ชำระเงิน - ร้านอาหาร</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    /* CSS สำหรับกำหนดเวลาพิมพ์ใบเสร็จให้ออกมาเป็นสลิปความร้อน */
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printable-receipt, #printable-receipt * {
+        visibility: visible;
+      }
+      #printable-receipt {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 10px;
+        margin: 0;
+        background: white;
+        color: black;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen p-4 sm:p-6">
+
+  <!-- Header -->
+  <header class="max-w-5xl mx-auto mb-6 bg-white p-4 rounded-2xl shadow-sm flex justify-between items-center border border-gray-200">
+    <div>
+      <h1 id="shop-title" class="text-xl font-bold text-red-600">💰 หน้าจอแคชเชียร์ & ชำระเงิน</h1>
+      <p class="text-xs text-gray-500">จัดการเช็คบิล พิมพ์ใบเสร็จ และเคลียร์โต๊ะอาหาร</p>
+    </div>
+    <div id="connection-status" class="text-xs bg-gray-100 text-yellow-600 px-3 py-1 rounded-full font-bold">
+      กำลังเชื่อมต่อ...
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-5xl mx-auto space-y-6">
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
+      <h2 class="text-lg font-bold text-gray-800 mb-4">📋 รายการโต๊ะที่รอชำระเงิน</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="cashier-container">
+        <div class="text-gray-400 text-center col-span-full py-10">กำลังโหลดข้อมูลโต๊ะ...</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Hidden Printable Area for Thermal Printer / Receipt Slip -->
+  <div id="printable-receipt" class="hidden">
+    <div style="font-family: 'Courier New', Courier, monospace; width: 300px; padding: 10px; font-size: 12px; color: #000;">
+      <div style="text-align: center; margin-bottom: 10px;">
+        <h3 id="receipt-shop-name" style="font-size: 16px; font-weight: bold; margin: 0;">ร้านเจ๊ A ก๋วยเตี๋ยวต้มยำ</h3>
+        <p style="margin: 2px 0; font-size: 10px;">ใบเสร็จรับเงิน / Order Receipt</p>
+        <p id="receipt-datetime" style="margin: 2px 0; font-size: 10px;"></p>
+      </div>
+      <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 5px 0; margin-bottom: 5px;">
+        <span id="receipt-table-no" style="font-weight: bold;">โต๊ะ: โต๊ะ 01</span><br>
+        <span id="receipt-order-id" style="font-size: 10px;">Order ID: #-</span>
+      </div>
+      <div id="receipt-items-list" style="margin-bottom: 10px;">
+        <!-- รายการสินค้าจำลองตอนพิมพ์ -->
+      </div>
+      <div style="border-top: 1px dashed #000; padding-top: 5px; margin-bottom: 15px;">
+        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
+          <span>ยอดรวมทั้งสิ้น:</span>
+          <span>฿<span id="receipt-grand-total">0</span></span>
+        </div>
+      </div>
+      <div style="text-align: center; font-size: 10px;">
+        <p style="margin: 0;">*** ขอบคุณที่ใช้บริการ ***</p>
+        <p style="margin: 2px 0;">Power by KDS System</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://bofbcqfavxbydzmfhhdi.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvZmJjcWZhdnhieWR6bWZoaGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNzgyNDMsImV4cCI6MjEwODY1NDI0M30.NazP38z1ligYp9S0gChRZs9JYNabN6YX4akJe84ai7o';
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let activeShopName = 'ร้านเจ๊ A ก๋วยเตี๋ยวต้มยำโบราณ';
+
+    // โหลดชื่อร้านจากตาราง settings
+    async function loadShopName() {
+      const { data } = await supabaseClient.from('settings').select('value').eq('key', 'shop_name').single();
+      if (data && data.value) {
+        activeShopName = data.value;
+        document.getElementById('shop-title').innerText = `💰 แคชเชียร์ & ชำระเงิน - ${activeShopName}`;
+      }
+    }
+
+    // โหลดออร์เดอร์ที่ยังไม่เคลียร์โต๊ะ (สถานะ new, cooking, ready)
+    async function loadCashierOrders() {
+      const container = document.getElementById('cashier-container');
+      
+      const { data, error } = await supabaseClient
+        .from('orders')
+        .select('*')
+        .in('status', ['new', 'cooking', 'ready'])
+        .order('id', { ascending: true });
+
+      if (error) {
+        container.innerHTML = `<div class="text-red-500 text-center col-span-full">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>`;
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full bg-gray-50 rounded-2xl p-10 text-center text-gray-400 space-y-2 border border-gray-100">
+            <p class="text-base font-bold">🎉 ไม่มีโต๊ะค้างชำระในขณะนี้</p>
+            <p class="text-xs">ออร์เดอร์ใหม่จะแสดงขึ้นมาอัตโนมัติเมื่อลูกค้าสั่งอาหาร</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = '';
+
+      data.forEach(order => {
+        let itemsList = [];
+        try {
+          itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        } catch (e) {
+          itemsList = [];
+        }
+
+        let itemsHtml = '';
+        if (Array.isArray(itemsList)) {
+          itemsList.forEach(item => {
+            itemsHtml += `
+              <div class="flex justify-between items-start text-xs border-b border-gray-100 pb-1.5 mb-1.5">
+                <div>
+                  <span class="font-bold text-gray-800">${item.menu_name} x ${item.quantity}</span>
+                  <span class="text-gray-500 block">(${item.noodle || '-'} / ${item.soup || '-'})</span>
+                  ${item.note ? `<span class="text-red-500 font-medium">💬 ${item.note}</span>` : ''}
+                </div>
+                <span class="font-bold text-gray-700">฿${item.total_price}</span>
+              </div>
+            `;
+          });
+        }
+
+        let statusBadge = '';
+        if (order.status === 'new') {
+          statusBadge = `<span class="bg-yellow-100 text-yellow-800 text-xs px-2.5 py-0.5 rounded-full font-bold">⏳ รอรับเรื่อง</span>`;
+        } else if (order.status === 'cooking') {
+          statusBadge = `<span class="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-bold">🔥 กำลังทำอาหาร</span>`;
+        } else if (order.status === 'ready') {
+          statusBadge = `<span class="bg-green-100 text-green-800 text-xs px-2.5 py-0.5 rounded-full font-bold">🎉 พร้อมเสิร์ฟ</span>`;
+        }
+
+        container.innerHTML += `
+          <div class="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-sm">
+            <div>
+              <div class="flex justify-between items-center border-b border-gray-200 pb-3 mb-3">
+                <span class="text-base font-extrabold text-red-600">📍 ${order.table_no || 'โต๊ะ 01'} <span class="text-xs text-gray-400 font-normal">(#${order.id})</span></span>
+                ${statusBadge}
+              </div>
+              <div class="space-y-1 max-h-40 overflow-y-auto pr-1">
+                ${itemsHtml}
+              </div>
+            </div>
+            
+            <div class="pt-3 border-t border-gray-200 space-y-3">
+              <div class="flex justify-between items-center text-base font-bold">
+                <span class="text-gray-600">ยอดรวมทั้งสิ้น:</span>
+                <span class="text-red-600 text-lg">฿${order.total_price}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick='printReceipt(${JSON.stringify(order)})' class="bg-gray-800 hover:bg-gray-900 text-white font-bold py-2.5 rounded-xl transition text-xs shadow flex items-center justify-center space-x-1">
+                  <span>🖨️ พิมพ์ใบเสร็จ</span>
+                </button>
+                <button onclick="checkoutOrder('${order.id}', '${order.table_no}')" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl transition text-xs shadow flex items-center justify-center space-x-1">
+                  <span>💰 ชำระเงิน & เคลียร์โต๊ะ</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    // ฟังก์ชันสั่งพิมพ์ใบเสร็จผ่าน Thermal Printer
+    function printReceipt(order) {
+      document.getElementById('receipt-shop-name').innerText = activeShopName;
+      document.getElementById('receipt-table-no').innerText = `โต๊ะ: ${order.table_no || 'โต๊ะ 01'}`;
+      document.getElementById('receipt-order-id').innerText = `Order ID: #${order.id}`;
+      document.getElementById('receipt-datetime').innerText = new Date().toLocaleString('th-TH');
+      document.getElementById('receipt-grand-total').innerText = order.total_price;
+
+      let itemsList = [];
+      try {
+        itemsList = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+      } catch (e) {
+        itemsList = [];
+      }
+
+      let slipItemsHtml = '';
+      if (Array.isArray(itemsList)) {
+        itemsList.forEach(item => {
+          slipItemsHtml += `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <div>
+                <span>${item.name || item.menu_name || 'เมนูอาหาร'} x ${item.quantity}</span><br>
+                <span style="font-size: 9px; color: #555;">(${item.noodle || '-'} / ${item.soup || '-'})</span>
+              </div>
+              <span style="font-weight: bold;">฿${item.total_price}</span>
+            </div>
+          `;
+        });
+      }
+      document.getElementById('receipt-items-list').innerHTML = slipItemsHtml;
+
+      // สั่งเปิดหน้าต่าง Print ของเบราว์เซอร์ (ส่งไปเครื่องพิมพ์ความร้อนได้ทันที)
+      window.print();
+    }
+
+    // ฟังก์ชันชำระเงินและเคลียร์โต๊ะ
+    async function checkoutOrder(orderId, tableNo) {
+      if (!confirm(`ยืนยันการชำระเงินของ ${tableNo} เรียบร้อยแล้วใช่ไหมครับ?`)) return;
+
+      const { error } = await supabaseClient
+        .from('orders')
+        .update({ status: 'completed' })
+        .eq('id', orderId);
+
+      if (error) {
+        alert('ชำระเงินไม่สำเร็จ: ' + error.message);
+      } else {
+        alert(`ชำระเงินของ ${tableNo} สำเร็จแล้ว เคลียร์โต๊ะพร้อมรับลูกค้าใหม่!`);
+        loadCashierOrders();
+      }
+    }
+
+    // ระบบ Realtime ฟังการเปลี่ยนแปลงออร์เดอร์
+    function setupRealtime() {
+      supabaseClient
+        .channel('cashier-realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          loadCashierOrders();
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            const statusEl = document.getElementById('connection-status');
+            statusEl.innerText = '🟢 เชื่อมต่อเรียลไทม์แล้ว';
+            statusEl.className = 'text-xs bg-gray-100 text-green-600 px-3 py-1 rounded-full font-bold';
+          }
+        });
+    }
+
+    // เริ่มทำงาน
+    loadShopName();
+    loadCashierOrders();
+    setupRealtime();
+  </script>
+</body>
+</html>
