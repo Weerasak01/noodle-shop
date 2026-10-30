@@ -284,21 +284,53 @@
         }
 
         function pinCurrentLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition((position) => {
-                    const lat = position.coords.latitude;
-                    const lng = position.coords.longitude;
-                    const mapLink = `https://maps.google.com/?q=${lat},${lng}`;
-                    document.getElementById('input-delivery-gps').value = mapLink;
-                    alert('ดึงพิกัดตำแหน่งปัจจุบันสำเร็จ!');
-                }, () => {
-                    alert('ไม่สามารถดึงตำแหน่งได้ กรุณาเปิดใช้งาน GPS');
-                });
-            } else {
-                alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
-            }
-        }
+    if (!navigator.geolocation) {
+        alert('เบราว์เซอร์ของคุณไม่รองรับการระบุตำแหน่ง');
+        return;
+    }
 
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '📍 กำลังค้นหาตำแหน่ง...';
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const mapLink = `https://maps.google.com/?q=${lat},${lng}`;
+            
+            const gpsInput = document.getElementById('input-delivery-gps');
+            if (gpsInput) {
+                gpsInput.value = mapLink;
+            }
+
+            btn.innerHTML = '📍 ปักหมุดสำเร็จ!';
+            alert(`ดึงพิกัดตำแหน่งปัจจุบันสำเร็จ!\nละติจูด: ${lat}\nลองจิจูด: ${lng}`);
+        },
+        (error) => {
+            btn.innerHTML = originalText;
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    alert('คุณไม่อนุญาตให้เข้าถึงตำแหน่ง กรุณาเปิดใช้งาน GPS และอนุญาตสิทธิ์ในตั้งค่าเบราว์เซอร์');
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    alert('ไม่สามารถหาตำแหน่งพิกัดของคุณได้ในขณะนี้');
+                    break;
+                case error.TIMEOUT:
+                    alert('หมดเวลาในการค้นหาตำแหน่ง กรุณาลองใหม่อีกครั้ง');
+                    break;
+                default:
+                    alert('เกิดข้อผิดพลาดในการดึงตำแหน่ง');
+                    break;
+            }
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+}
         function filterCategory(cat) {
             currentCategory = cat;
             document.getElementById('category-title').innerText = 'เมนู' + cat;
