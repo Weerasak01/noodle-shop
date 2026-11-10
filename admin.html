@@ -54,13 +54,7 @@
             <div>
                 <label class="block text-sm font-medium text-gray-700">ตัวเลือกน้ำซุป/แบบ (คั่นด้วย ,)</label>
                 <input type="text" id="soups" class="w-full mt-1 border rounded-lg p-2 text-sm" placeholder="น้ำใส, ต้มยำ, แห้ง">
-            </div><!-- เพิ่มตัวเลือกเปิด-ปิดการขายตรงนี้ -->
-<div>
-    <label class="flex items-center gap-2 cursor-pointer mt-2">
-        <input type="checkbox" id="menu-status-checkbox" checked class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500">
-        <span class="text-sm font-medium text-gray-700">เปิดขายเมนูนี้ (ติ๊กออกเพื่อปิดการขาย)</span>
-    </label>
-</div>
+            </div>
             <button type="submit" id="submit-btn" class="w-full bg-red-600 text-white py-2.5 rounded-lg font-bold hover:bg-red-700 transition">
                 บันทึกเมนู
             </button>
@@ -129,77 +123,62 @@
         }
 
         // ฟังก์ชันบันทึก (รองรับทั้งเพิ่มใหม่ และแก้ไข พร้อมรูปภาพ)
-       async function saveMenu(event) {
-    event.preventDefault();
+        async function saveMenu(e) {
+            e.preventDefault();
+            const editId = document.getElementById('edit-id').value;
+            const name = document.getElementById('name').value.trim();
+            const price = parseFloat(document.getElementById('price').value) || 0;
+            const noodles = document.getElementById('noodles').value.trim();
+            const soups = document.getElementById('soups').value.trim();
+            
+            let imageUrl = currentEditingImageUrl;
+            const fileInput = document.getElementById('imageFile').files[0];
 
-    const editId = document.getElementById('edit-id').value;
-    const name = document.getElementById('menu-name').value;
-    const price = parseFloat(document.getElementById('menu-price').value);
-    const noodles = document.getElementById('menu-noodles').value;
-    const soups = document.getElementById('menu-soups').value;
-    const imageFile = document.getElementById('menu-image').files[0];
-    
-    // 🟢 [เพิ่มบรรทัดนี้] ดึงค่าสถานะจาก Checkbox ที่เราเพิ่งใส่ไป
-    const isAvailable = document.getElementById('menu-status-checkbox').checked;
+            if (fileInput) {
+                const fileName = `menu_${Date.now()}_${fileInput.name}`;
+                const { data, error } = await supabaseClient.storage.from('menu-images').upload(fileName, fileInput);
+                if (error) {
+                    alert('อัปโหลดรูปภาพไม่สำเร็จ: ' + error.message);
+                    return;
+                }
+                const { data: publicUrlData } = supabaseClient.storage.from('menu-images').getPublicUrl(fileName);
+                imageUrl = publicUrlData.publicUrl;
+            }
 
-    let imageUrl = currentEditingImageUrl;
+            const payload = { name, price, noodles, soups, image_url: imageUrl };
 
-    if (imageFile) {
-        const fileName = `${Date.now()}_${imageFile.name}`;
-        const { data: uploadData, error: uploadError } = await supabaseClient.storage
-            .from('menu-images')
-            .upload(fileName, imageFile);
-
-        if (uploadError) {
-            alert('อัปโหลดรูปภาพไม่สำเร็จ: ' + uploadError.message);
-            return;
-        }
-
-        const { data: publicUrlData } = supabaseClient.storage
-            .from('menu-images')
-            .getPublicUrl(fileName);
-
-        imageUrl = publicUrlData.publicUrl;
-    }
-
-    const payload = {
-        name,
-        price,
-        noodles,
-        soups,
-        image_url: imageUrl,
-        is_available: isAvailable // 🟢 [เพิ่มบรรทัดนี้] ส่งสถานะเปิด/ปิดไปบันทึก
-    };
-
-    if (editId) {
-        const { error } = await supabaseClient.from('menus').update(payload).eq('id', editId);
-        if (error) { alert('แก้ไขเมนูไม่สำเร็จ: ' + error.message); return; }
-    } else {
-        const { error } = await supabaseClient.from('menus').insert([payload]);
-        if (error) { alert('เพิ่มเมนูไม่สำเร็จ: ' + error.message); return; }
-    }
-
-    resetForm();
-    fetchMenus();
-}
+            if (editId) {
+                // แก้ไขข้อมูลเดิม
+                const { error } = await supabaseClient.from('menus').update(payload).eq('id', editId);
+                if (error) {
+                    alert('แก้ไขเมนูไม่สำเร็จ: ' + error.message);
+                } else {
+                    alert('แก้ไขเมนูสำเร็จ!');
+                    resetForm();
+                    fetchMenus();
+                }
+            } else {
+                // เพิ่มเมนูใหม่
+                const { error } = await supabaseClient.from('menus').insert([payload]);
+                if (error) {
+                    alert('เพิ่มเมนูไม่สำเร็จ: ' + error.message);
+                } else {
+                    alert('เพิ่มเมนูสำเร็จ!');
+                    resetForm();
+                    fetchMenus();
+                }
             }
         }
 
         function startEditMenu(id) {
-    const menu = menusCache.find(m => String(m.id) === String(id));
-    if (!menu) return;
+            const menu = menusCache.find(m => String(m.id) === String(id));
+            if (!menu) return;
 
-    document.getElementById('edit-id').value = menu.id;
-    document.getElementById('menu-name').value = menu.name;
-    document.getElementById('menu-price').value = menu.price;
-    document.getElementById('menu-noodles').value = menu.noodles || '';
-    document.getElementById('menu-soups').value = menu.soups || '';
-    
-    // 🟢 [เพิ่มบรรทัดนี้] ให้ checkbox ติ๊กตามค่าจริงในฐานข้อมูลตอนกดแก้ไข
-    document.getElementById('menu-status-checkbox').checked = menu.is_available !== false;
-
-   
-}
+            document.getElementById('edit-id').value = menu.id;
+            document.getElementById('name').value = menu.name;
+            document.getElementById('price').value = menu.price;
+            document.getElementById('noodles').value = menu.noodles || '';
+            document.getElementById('soups').value = menu.soups || '';
             
             currentEditingImageUrl = menu.image_url || '';
             
