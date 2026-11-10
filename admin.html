@@ -39,6 +39,16 @@
                 <input type="text" id="name" required class="w-full mt-1 border rounded-lg p-2 text-sm">
             </div>
 
+            <!-- เพิ่มช่องเลือกหมวดหมู่ -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700">หมวดหมู่</label>
+                <select id="category" class="w-full mt-1 border rounded-lg p-2 text-sm bg-white font-medium">
+                    <option value="ก๋วยเตี๋ยว">🍜 ก๋วยเตี๋ยว</option>
+                    <option value="อาหาร">🍛 อาหาร</option>
+                    <option value="เครื่องดื่ม">🥤 เครื่องดื่ม</option>
+                </select>
+            </div>
+
             <!-- ช่องกรอกราคาธรรมดาและราคาพิเศษ -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
@@ -116,14 +126,18 @@
                 const isAvailable = m.is_available !== false;
                 const normalPrice = m.price || 0;
                 const specialPrice = (m.special_price !== null && m.special_price !== undefined && m.special_price !== '') ? m.special_price : (normalPrice + 10);
+                const category = m.category || 'ก๋วยเตี๋ยว';
 
                 listEl.innerHTML += `
                     <div class="flex justify-between items-center border p-3 rounded-xl bg-gray-50 gap-3">
                         <div class="flex items-center gap-3 min-w-0">
                             <img src="${m.image_url || 'https://via.placeholder.com/150'}" class="w-12 h-12 object-cover rounded-lg shadow-sm">
                             <div class="min-w-0">
-                                <p class="font-bold text-sm truncate">${m.name}</p>
-                                <p class="text-xs text-red-600 font-bold">ธรรมดา ฿${normalPrice} | พิเศษ ฿${specialPrice}</p>
+                                <div class="flex items-center gap-2">
+                                    <p class="font-bold text-sm truncate">${m.name}</p>
+                                    <span class="bg-gray-200 text-gray-700 text-[10px] px-2 py-0.5 rounded-full font-bold">${category}</span>
+                                </div>
+                                <p class="text-xs text-red-600 font-bold mt-0.5">ธรรมดา ฿${normalPrice} | พิเศษ ฿${specialPrice}</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
@@ -148,6 +162,7 @@
             e.preventDefault();
             const editId = document.getElementById('edit-id').value;
             const name = document.getElementById('name').value.trim();
+            const category = document.getElementById('category').value;
             const price = parseFloat(document.getElementById('price').value) || 0;
             const specialPriceInput = document.getElementById('special_price').value;
             const special_price = specialPriceInput !== '' ? parseFloat(specialPriceInput) : null;
@@ -169,7 +184,7 @@
                 imageUrl = publicUrlData.publicUrl;
             }
 
-            const payload = { name, price, special_price, noodles, soups, image_url: imageUrl };
+            const payload = { name, category, price, special_price, noodles, soups, image_url: imageUrl };
 
             if (editId) {
                 const { error } = await supabaseClient.from('menus').update(payload).eq('id', editId);
@@ -198,6 +213,7 @@
 
             document.getElementById('edit-id').value = menu.id;
             document.getElementById('name').value = menu.name;
+            document.getElementById('category').value = menu.category || 'ก๋วยเตี๋ยว';
             document.getElementById('price').value = menu.price;
             document.getElementById('special_price').value = (menu.special_price !== null && menu.special_price !== undefined) ? menu.special_price : '';
             document.getElementById('noodles').value = menu.noodles || '';
