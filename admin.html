@@ -39,7 +39,7 @@
                 <input type="text" id="name" required class="w-full mt-1 border rounded-lg p-2 text-sm">
             </div>
 
-            <!-- ช่องกรอกราคา ธรรมดา และ พิเศษ -->
+            <!-- ช่องกรอกราคาธรรมดาและราคาพิเศษ -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">ราคาธรรมดา (บาท)</label>
@@ -115,7 +115,6 @@
             menusCache.forEach(m => {
                 const isAvailable = m.is_available !== false;
                 const normalPrice = m.price || 0;
-                // ถ้าราชการพิเศษไม่มีค่า ให้คำนวณราคาธรรมดา + 10 บาทอัตโนมัติ
                 const specialPrice = (m.special_price !== null && m.special_price !== undefined && m.special_price !== '') ? m.special_price : (normalPrice + 10);
 
                 listEl.innerHTML += `
@@ -151,7 +150,7 @@
             const name = document.getElementById('name').value.trim();
             const price = parseFloat(document.getElementById('price').value) || 0;
             const specialPriceInput = document.getElementById('special_price').value;
-            const special_price = specialPriceInput !== '' ? parseFloat(specialPriceInput) : (price + 10);
+            const special_price = specialPriceInput !== '' ? parseFloat(specialPriceInput) : null;
             
             const noodles = document.getElementById('noodles').value.trim();
             const soups = document.getElementById('soups').value.trim();
@@ -200,7 +199,7 @@
             document.getElementById('edit-id').value = menu.id;
             document.getElementById('name').value = menu.name;
             document.getElementById('price').value = menu.price;
-            document.getElementById('special_price').value = menu.special_price !== null ? menu.special_price : '';
+            document.getElementById('special_price').value = (menu.special_price !== null && menu.special_price !== undefined) ? menu.special_price : '';
             document.getElementById('noodles').value = menu.noodles || '';
             document.getElementById('soups').value = menu.soups || '';
             
@@ -210,7 +209,7 @@
             document.getElementById('submit-btn').innerText = 'บันทึกการแก้ไข';
             document.getElementById('cancel-edit-btn').classList.remove('hidden');
             
-            window.scrollTo({ top: { top: 0, behavior: 'smooth' } });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function resetForm() {
